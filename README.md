@@ -1,3 +1,9 @@
+# Fork Description
+This fork of boxmot adds the ability to resume object tracking from a previous state.
+It does this by taking detections and their known IDs from a prior tracking session.
+The primary goal is to maintain persistent IDs for tracked objects across process restarts.
+This functionality is especially useful for tracking relatively stationary objects.
+
 # BoxMOT: pluggable SOTA tracking modules for segmentation, object detection and pose estimation models
 
 <div align="center">
