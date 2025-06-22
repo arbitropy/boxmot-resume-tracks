@@ -4,6 +4,12 @@ It does this by taking detections and their known IDs from a prior tracking sess
 The primary goal is to maintain persistent IDs for tracked objects across process restarts.
 This functionality is especially useful for tracking relatively stationary objects.
 
+```
+Usage
+```
+
+Original README starts from here
+---
 # BoxMOT: pluggable SOTA tracking modules for segmentation, object detection and pose estimation models
 
 <div align="center">
