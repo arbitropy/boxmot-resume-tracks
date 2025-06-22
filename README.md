@@ -8,8 +8,8 @@ This functionality is especially useful for tracking relatively stationary objec
 Usage
 ```
 
-Original README starts from here
 ---
+**Original README starts from here**
 # BoxMOT: pluggable SOTA tracking modules for segmentation, object detection and pose estimation models
 
 <div align="center">
