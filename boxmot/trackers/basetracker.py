@@ -63,6 +63,55 @@ class BaseTracker(ABC):
             LOGGER.warning("Max age > max observations, increasing size of max observations...")
             self.max_obs = self.max_age + 5
             print("self.max_obs", self.max_obs)
+            
+    def initialize_from_detections(self, dets: np.ndarray, img: np.ndarray, resume_ids: np.ndarray, embs: np.ndarray = None):
+        """
+        Initialize tracker state from existing detections with resume IDs.
+        This bypasses the normal update flow and directly creates tracks.
+        
+        Parameters:
+        - dets (np.ndarray): Array of detections in format (x1,y1,x2,y2,conf,cls)
+        - img (np.ndarray): Frame image for initialization
+        - resume_ids (np.ndarray): Array of resume IDs to assign to each detection
+        - embs (np.ndarray, optional): Embeddings for each detection
+        """
+        if len(dets) == 0:
+            return
+        
+        # Ensure proper input format
+        assert len(dets) == len(resume_ids), "Number of detections must match number of resume IDs"
+        
+        # Perform first-time setup if needed
+        if not self._first_frame_processed and img is not None:
+            self.h, self.w = img.shape[0:2]
+            self.asso_func = AssociationFunction(
+                w=self.w,
+                h=self.h,
+                asso_mode=self.asso_func_name
+            ).asso_func
+            self._first_frame_processed = True
+        
+        if not self._first_dets_processed:
+            if dets.ndim == 2 and dets.shape[1] == 6:
+                self.is_obb = False
+                self._first_dets_processed = True
+            elif dets.ndim == 2 and dets.shape[1] == 7:
+                self.is_obb = True
+                self._first_dets_processed = True
+        
+        # Set frame count to 1 for initialization
+        self.frame_count = 1
+        
+        # Call the subclass-specific initialization
+        self._initialize_tracks_from_detections(dets, img, resume_ids, embs)
+        
+    @abstractmethod
+    def _initialize_tracks_from_detections(self, dets: np.ndarray, img: np.ndarray, resume_ids: np.ndarray, embs: np.ndarray = None):
+        """
+        Subclass-specific implementation for initializing tracks from detections.
+        This method should be implemented by each tracker type.
+        """
+        raise NotImplementedError("This method must be implemented by the subclass.")
 
     @abstractmethod
     def update(self, dets: np.ndarray, img: np.ndarray, embs: np.ndarray = None) -> np.ndarray:

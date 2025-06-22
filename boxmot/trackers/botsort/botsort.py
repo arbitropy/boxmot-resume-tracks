@@ -90,6 +90,44 @@ class BotSort(BaseTracker):
 
         self.cmc = get_cmc_method(cmc_method)()
         self.fuse_first_associate = fuse_first_associate
+        
+    def _initialize_tracks_from_detections(self, dets: np.ndarray, img: np.ndarray, resume_ids: np.ndarray, embs: np.ndarray = None):
+        """
+        Initialize BotSort tracks directly from detections with resume IDs.
+        """
+        # Clear existing tracks
+        self.active_tracks = []
+        self.lost_stracks = []
+        self.removed_stracks = []
+        
+        # Update the global track counter to handle resume IDs
+        max_resume_id = int(np.max(resume_ids)) if len(resume_ids) > 0 else 0
+        if max_resume_id > BaseTrack._count:
+            BaseTrack._count = max_resume_id
+        
+        # Add detection indices
+        dets = np.hstack([dets, np.arange(len(dets)).reshape(-1, 1)])
+        
+        # Extract features if needed and not provided
+        if self.with_reid and embs is None:
+            features = self.model.get_features(dets[:, 0:4], img)
+        else:
+            features = embs if embs is not None else [None] * len(dets)
+        
+        # Create and activate tracks
+        for i, (det, resume_id) in enumerate(zip(dets, resume_ids)):
+            if det[4] < self.track_low_thresh:  # Skip low confidence detections
+                continue
+                
+            # Create track with resume ID
+            feat = features[i] if features is not None and len(features) > i else None
+            track = STrack(det, feat, max_obs=self.max_obs, resume_id=int(resume_id))
+            
+            # Activate the track
+            track.activate(self.kalman_filter, self.frame_count)
+            self.active_tracks.append(track)
+        
+        print(f"Initialized {len(self.active_tracks)} tracks with resume IDs: {[t.id for t in self.active_tracks]}")
 
     @BaseTracker.setup_decorator
     @BaseTracker.per_class_decorator

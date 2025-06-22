@@ -10,13 +10,15 @@ from boxmot.utils.ops import xywh2xyxy, xyxy2xywh
 class STrack(BaseTrack):
     shared_kalman = KalmanFilterXYWH()
 
-    def __init__(self, det, feat=None, feat_history=50, max_obs=50):
+    def __init__(self, det, feat=None, feat_history=50, max_obs=50, resume_id=None):
         # Initialize detection parameters
         self.xywh = xyxy2xywh(det[:4])  # Convert to (xc, yc, w, h)
         self.conf = det[4]
         self.cls = det[5]
         self.det_ind = det[6]
         self.max_obs = max_obs
+        
+        self.resume_id = resume_id
 
         # Kalman filter and tracking state
         self.kalman_filter = None
@@ -106,7 +108,11 @@ class STrack(BaseTrack):
     def activate(self, kalman_filter, frame_id):
         """Activate a new track."""
         self.kalman_filter = kalman_filter
-        self.id = self.next_id()
+        # Use resume_id if provided, otherwise use next_id()
+        if self.resume_id is not None:
+            self.id = self.resume_id
+        else:
+            self.id = self.next_id()
         self.mean, self.covariance = self.kalman_filter.initiate(self.xywh)
         self.tracklet_len = 0
         self.state = TrackState.Tracked
@@ -115,6 +121,7 @@ class STrack(BaseTrack):
         self.frame_id = frame_id
         self.start_frame = frame_id
 
+    # TODO: Understand the effect of resume_id on re-activation
     def re_activate(self, new_track, frame_id, new_id=False):
         """Re-activate a track with a new detection."""
         self.mean, self.covariance = self.kalman_filter.update(
