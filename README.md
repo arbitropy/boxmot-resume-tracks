@@ -4,9 +4,185 @@ It does this by taking detections and their known IDs from a prior tracking sess
 The primary goal is to maintain persistent IDs for tracked objects across process restarts.
 This functionality is especially useful for tracking relatively stationary objects.
 
+## Example Usage
+
+### Storage
+The system automatically saves tracking data every `READ_EVERY_N_FRAMES`:
+- **Detections**: Normalized bounding boxes with track IDs stored as `last_dets.pkl`
+- **Frame**: Last processed frame saved as `last_frame.jpg`
+- **Location**: All data stored in `tracking_storage` directory
+
+### Resume Process
+When restarting, the system:
+1. Loads previous detections and frame from storage
+2. Initializes tracker state using `initialize_from_detections()` method
+3. Continues tracking with preserved IDs
+
+## Usage
+
+### Basic Setup
+````python
+# Configure storage
+STORAGE_DIR = 'tracking_storage'
+READ_EVERY_N_FRAMES = 500  # Save state every N frames
+
+# Initialize tracker
+tracker = BotSort(
+    reid_weights=Path('clip_market1501.pt'),
+    device=0,
+    half=False,
+    track_buffer=100
+)
+````
+
+### Storage Functions
+````python
+def save_detection_data(tracks, frame, frame_width, frame_height):
+    """Save tracks as detections with manual IDs and frame to local storage"""
+    # Convert tracks to detections with manual IDs
+    # Track format: [x1, y1, x2, y2, track_id, conf, cls, det_ind]
+    # Detection format: [x1, y1, x2, y2, conf, cls, manual_id]
+    
+    if len(tracks) > 0:
+        # Normalize coordinates to 0-1 range
+        normalized_dets = np.zeros((len(tracks), 8), dtype=np.float32)
+        normalized_dets[:, 0] = tracks[:, 0] / frame_width   # x1
+        normalized_dets[:, 1] = tracks[:, 1] / frame_height  # y1
+        normalized_dets[:, 2] = tracks[:, 2] / frame_width   # x2
+        normalized_dets[:, 3] = tracks[:, 3] / frame_height  # y2
+        normalized_dets[:, 4] = tracks[:, 5]  # conf
+        normalized_dets[:, 5] = tracks[:, 6]  # cls
+        normalized_dets[:, 6] = tracks[:, 4]  # manual_id = track_id
+    else:
+        normalized_dets = np.empty((0, 7), dtype=np.float32)
+    
+    # Save normalized detections with frame dimensions
+    detection_data = {
+        'detections': normalized_dets,
+        'original_width': frame_width,
+        'original_height': frame_height
+    }
+    
+    with open(DETS_FILE, 'wb') as f:
+        pickle.dump(detection_data, f)
+    
+    # Save frame
+    cv2.imwrite(FRAME_FILE, frame)
+    
+def load_last_detections_for_init(current_width, current_height):
+    """Load last detections and extract dets and manual IDs separately"""
+    try:
+        with open(DETS_FILE, 'rb') as f:
+            data = pickle.load(f)
+        
+        if isinstance(data, dict):
+            normalized_dets = data['detections']
+        else:
+            return None, None
+        
+        if len(normalized_dets) > 0:
+            # Scale to current resolution
+            scaled_dets = normalized_dets.copy()
+            scaled_dets[:, 0] *= current_width   # x1
+            scaled_dets[:, 1] *= current_height  # y1
+            scaled_dets[:, 2] *= current_width   # x2
+            scaled_dets[:, 3] *= current_height  # y2
+            
+            # Extract detections (first 6 columns) and manual IDs (last column)
+            dets = scaled_dets[:, :6]  # x1,y1,x2,y2,conf,cls
+            manual_ids = scaled_dets[:, 6].astype(int)  # manual_id
+            
+            return dets, manual_ids
+        else:
+            return np.empty((0, 6), dtype=np.float32), np.array([], dtype=int)
+            
+    except FileNotFoundError:
+        return None, None
+
+def load_last_frame(target_width=None, target_height=None):
+    """Load last frame from storage and optionally resize to target resolution"""
+    try:
+        if os.path.exists(FRAME_FILE):
+            frame = cv2.imread(FRAME_FILE)
+            if frame is not None and target_width is not None and target_height is not None:
+                frame = cv2.resize(frame, (target_width, target_height))
+            return frame
+        return None
+    except:
+        return Nonedef load_last_detections_for_init(current_width, current_height):
+    """Load last detections and extract dets and manual IDs separately"""
+    try:
+        with open(DETS_FILE, 'rb') as f:
+            data = pickle.load(f)
+        
+        if isinstance(data, dict):
+            normalized_dets = data['detections']
+        else:
+            return None, None
+        
+        if len(normalized_dets) > 0:
+            # Scale to current resolution
+            scaled_dets = normalized_dets.copy()
+            scaled_dets[:, 0] *= current_width   # x1
+            scaled_dets[:, 1] *= current_height  # y1
+            scaled_dets[:, 2] *= current_width   # x2
+            scaled_dets[:, 3] *= current_height  # y2
+            
+            # Extract detections (first 6 columns) and manual IDs (last column)
+            dets = scaled_dets[:, :6]  # x1,y1,x2,y2,conf,cls
+            manual_ids = scaled_dets[:, 6].astype(int)  # manual_id
+            
+            return dets, manual_ids
+        else:
+            return np.empty((0, 6), dtype=np.float32), np.array([], dtype=int)
+            
+    except FileNotFoundError:
+        return None, None
+
+def load_last_frame(target_width=None, target_height=None):
+    """Load last frame from storage and optionally resize to target resolution"""
+    try:
+        if os.path.exists(FRAME_FILE):
+            frame = cv2.imread(FRAME_FILE)
+            if frame is not None and target_width is not None and target_height is not None:
+                frame = cv2.resize(frame, (target_width, target_height))
+            return frame
+        return None
+    except:
+        return None
+````
+
+### Resume Initialization
+````python
+# Check for existing tracking data
+last_dets, last_manual_ids = load_last_detections_for_init(width, height)
+last_frame = load_last_frame(width, height)
+
+if last_dets is not None and len(last_dets) > 0:
+    # Resume from previous state
+    tracker.initialize_from_detections(last_dets, last_frame, last_manual_ids)
+else:
+    # Start fresh tracking
+    print("Starting fresh tracking...")
+````
+
+## Key Features
+
+- **Automatic State Saving**: Tracks are saved automatically at specified intervals
+- **Resolution Independence**: Coordinates are normalized for different video resolutions
+- **ID Preservation**: Object IDs remain consistent across resume sessions
+
+## File Structure
 ```
-Usage
+tracking_storage/
+├── last_dets.pkl      # Normalized detection data
+└── last_frame.jpg     # Last processed frame
 ```
+
+## Notes
+- The `track_buffer` parameter affects how long tracks are maintained
+- Storage files are overwritten each time new data is saved
+- Only works for botsort currently
 
 ---
 **Original README starts from here**
